@@ -20,6 +20,8 @@ import jiwer
 import jiwer
 from torchmetrics.functional import char_error_rate, word_error_rate
 
+from torchmetrics.text import BLEUScore
+
 nltk.download('wordnet')
 nltk.download('wordnet_ic')
 nltk.download('punkt')
@@ -244,6 +246,16 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         print_msg(f"Validation WER: {wer}")
         writer.flush()
 
+        # Convert expected into a list of lists
+        expected_list = [[translation] for translation in expected]
+        # Initialize BLEUScore object
+        metric1 = BLEUScore()
+        # Computing BLEU score
+        bleu = metric1(predicted, expected_list)
+        writer.add_scalar('validation BLEU', bleu, global_step)
+        print_msg(f"Validation BLEU: {bleu}")
+        writer.flush()
+
         # # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
 
@@ -262,10 +274,10 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # print_msg(f"Validation BLEU-custom1: {bleu_custom1}")
         # writer.flush()
 
-        bleu_custom2 = calculate_bleu(predicted, expected)
-        writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        print_msg(f"Validation BLEU: {bleu_custom2}")
-        writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
         
 
 # def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source, source_mask, tokenizer_tgt, max_len, device):
@@ -330,14 +342,14 @@ def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source
         decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
 
     # Refinement step using model_causal_mask_with_future for each token except the last one
-    for i in range(1, decoder_input.size(1) - 1):
+    for i in range(4, decoder_input.size(1) - 1):
         refinement_segment = decoder_input[:, :i+2]  # Select up to the next token for refinement
         refinement_mask = causal_mask_with_future(refinement_segment.size(1)).type_as(source_mask).to(device)
         refinement_out = model_causal_mask_with_future.decode(encoder_output, source_mask, refinement_segment, refinement_mask)
-        refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -2])  # Get probabilities for the token before the last
+        refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -3])  # Get probabilities for the token before the last
         _, refined_word = torch.max(refinement_prob, dim=1)
 
-        decoder_input[:, i] = refined_word  # Update the current token with the refined prediction
+        decoder_input[:, i+1] = refined_word  # Update the current token with the refined prediction
 
     return decoder_input.squeeze(0)
 
@@ -403,6 +415,16 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         print_msg(f"Validation WER: {wer}")
         writer.flush()
 
+         # Convert expected into a list of lists
+        expected_list = [[translation] for translation in expected]
+        # Initialize BLEUScore object
+        metric1 = BLEUScore()
+        # Computing BLEU score
+        bleu = metric1(predicted_whole, expected_list)
+        writer.add_scalar('validation BLEU', bleu, global_step)
+        print_msg(f"Validation BLEU: {bleu}")
+        writer.flush()
+
         # # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
 
@@ -420,10 +442,10 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         # print_msg(f"Validation BLEU-custom1: {bleu_custom1}")
         # writer.flush()
 
-        bleu_custom2 = calculate_bleu(predicted_whole, expected)
-        writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        print_msg(f"Validation BLEU: {bleu_custom2}")
-        writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted_whole, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
         
 def get_all_sentences(ds, lang):
     for item in ds:

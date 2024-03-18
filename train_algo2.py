@@ -201,7 +201,6 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
     with torch.no_grad():
         for batch in validation_ds:
-            count += 1
             encoder_input = batch["encoder_input"].to(device) # (b, seq_len)
             encoder_mask = batch["encoder_mask"].to(device) # (b, 1, 1, seq_len)
 
@@ -374,7 +373,6 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
 
     with torch.no_grad():
         for batch in validation_ds:
-            count += 1
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"

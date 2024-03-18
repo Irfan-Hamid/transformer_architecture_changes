@@ -38,6 +38,8 @@ from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
+import evaluate
+
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
 
@@ -233,31 +235,50 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
             counter += 1  # Increment the manual counter
 
-    if writer:
-        # Evaluate the character error rate
-        # Compute the char error rate 
-        metric = torchmetrics.CharErrorRate()
-        cer = metric(predicted, expected)
-        writer.add_scalar('validation cer', cer, global_step)
-        print_msg(f"Validation CER: {cer}")
-        writer.flush()
+    rouge = evaluate.load("rouge")
+    meteor = evaluate.load("meteor")
+    bleu = evaluate.load("bleu")
+    wer = evaluate.load("wer")
+    cer = evaluate.load("cer")
 
-        # Compute the word error rate
-        metric = torchmetrics.WordErrorRate()
-        wer = metric(predicted, expected)
-        writer.add_scalar('validation wer', wer, global_step)
-        print_msg(f"Validation WER: {wer}")
-        writer.flush()
+    rouge_results = rouge.compute(predictions=predicted, references=expected)
+    meteor_results = meteor.compute(predictions=predicted, references=expected)
+    bleu_results = bleu.compute(predictions=predicted, references=[[ref] for ref in expected])
+    wer_results = wer.compute(predictions=predicted, references=expected)
+    cer_results = cer.compute(predictions=predicted, references=expected)
 
-        # Convert expected into a list of lists
-        expected_list = [[translation] for translation in expected]
-        # Initialize BLEUScore object
-        metric1 = BLEUScore()
-        # Computing BLEU score
-        bleu = metric1(predicted, expected_list)
-        writer.add_scalar('validation BLEU', bleu, global_step)
-        print_msg(f"Validation BLEU: {bleu}")
-        writer.flush()
+    # Print metrics
+    print_msg(f"Validation ROUGE Scores:\n{rouge_results}")
+    print_msg(f"Validation METEOR Score: {round(meteor_results['meteor'], 2)}")
+    print_msg(f"BLEU Score: {bleu_results}")
+    print_msg(f"WER: {wer_results}")
+    print_msg(f"CER: {cer_results}")
+
+    # if writer:
+    #     # Evaluate the character error rate
+    #     # Compute the char error rate 
+    #     metric = torchmetrics.CharErrorRate()
+    #     cer = metric(predicted, expected)
+    #     writer.add_scalar('validation cer', cer, global_step)
+    #     print_msg(f"Validation CER: {cer}")
+    #     writer.flush()
+
+    #     # Compute the word error rate
+    #     metric = torchmetrics.WordErrorRate()
+    #     wer = metric(predicted, expected)
+    #     writer.add_scalar('validation wer', wer, global_step)
+    #     print_msg(f"Validation WER: {wer}")
+    #     writer.flush()
+
+    #     # Convert expected into a list of lists
+    #     expected_list = [[translation] for translation in expected]
+    #     # Initialize BLEUScore object
+    #     metric1 = BLEUScore()
+    #     # Computing BLEU score
+    #     bleu = metric1(predicted, expected_list)
+    #     writer.add_scalar('validation BLEU', bleu, global_step)
+    #     print_msg(f"Validation BLEU: {bleu}")
+    #     writer.flush()
 
         # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
@@ -402,31 +423,50 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
                 print_msg('-' * console_width)
 
             counter += 1  # Increment the manual counter
+
+    rouge = evaluate.load("rouge")
+    meteor = evaluate.load("meteor")
+    bleu = evaluate.load("bleu")
+    wer = evaluate.load("wer")
+    cer = evaluate.load("cer")
+
+    rouge_results = rouge.compute(predictions=predicted_whole, references=expected)
+    meteor_results = meteor.compute(predictions=predicted_whole, references=expected)
+    bleu_results = bleu.compute(predictions=predicted_whole, references=[[ref] for ref in expected])
+    wer_results = wer.compute(predictions=predicted_whole, references=expected)
+    cer_results = cer.compute(predictions=predicted_whole, references=expected)
+
+    # Print metrics
+    print_msg(f"Validation ROUGE Scores:\n{rouge_results}")
+    print_msg(f"Validation METEOR Score: {round(meteor_results['meteor'], 2)}")
+    print_msg(f"BLEU Score: {bleu_results}")
+    print_msg(f"WER: {wer_results}")
+    print_msg(f"CER: {cer_results}")      
         
-    if writer:
-        # Compute the Character Error Rate (CER)
-        cer_metric = torchmetrics.CharErrorRate()
-        cer = cer_metric(predicted_whole, expected)
-        writer.add_scalar('validation CER', cer, global_step)
-        print_msg(f"Validation CER: {cer}")
-        writer.flush()
+    # if writer:
+    #     # Compute the Character Error Rate (CER)
+    #     cer_metric = torchmetrics.CharErrorRate()
+    #     cer = cer_metric(predicted_whole, expected)
+    #     writer.add_scalar('validation CER', cer, global_step)
+    #     print_msg(f"Validation CER: {cer}")
+    #     writer.flush()
 
-        # Compute the Word Error Rate (WER)
-        wer_metric = torchmetrics.WordErrorRate()
-        wer = wer_metric(predicted_whole, expected)
-        writer.add_scalar('validation WER', wer, global_step)
-        print_msg(f"Validation WER: {wer}")
-        writer.flush()
+    #     # Compute the Word Error Rate (WER)
+    #     wer_metric = torchmetrics.WordErrorRate()
+    #     wer = wer_metric(predicted_whole, expected)
+    #     writer.add_scalar('validation WER', wer, global_step)
+    #     print_msg(f"Validation WER: {wer}")
+    #     writer.flush()
 
-         # Convert expected into a list of lists
-        expected_list = [[translation] for translation in expected]
-        # Initialize BLEUScore object
-        metric1 = BLEUScore()
-        # Computing BLEU score
-        bleu = metric1(predicted_whole, expected_list)
-        writer.add_scalar('validation BLEU', bleu, global_step)
-        print_msg(f"Validation BLEU: {bleu}")
-        writer.flush()
+    #      # Convert expected into a list of lists
+    #     expected_list = [[translation] for translation in expected]
+    #     # Initialize BLEUScore object
+    #     metric1 = BLEUScore()
+    #     # Computing BLEU score
+    #     bleu = metric1(predicted_whole, expected_list)
+    #     writer.add_scalar('validation BLEU', bleu, global_step)
+    #     print_msg(f"Validation BLEU: {bleu}")
+    #     writer.flush()
 
         # # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]

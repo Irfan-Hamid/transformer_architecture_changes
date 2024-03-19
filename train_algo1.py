@@ -47,7 +47,7 @@ import collections
 import math
 
 import math
-import numpy
+import numpy as np
 def n_gram_counts(text, n):
     # Generate n-grams from the given text and convert them to tuples
     return [tuple(word.lower() for word in text[i:i+n]) for i in range(len(text)-n+1)]

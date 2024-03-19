@@ -193,7 +193,7 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     predicted = []
 
     # Indices of examples to print - first, middle, and last
-    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) - 1]
+    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) // 10, len(validation_ds) // 30,len(validation_ds) // 50, len(validation_ds) - 1]
     counter = 0  # Manual counter to keep track of the current index
 
     try:
@@ -254,31 +254,31 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     print_msg(f"WER: {wer_results}")
     print_msg(f"CER: {cer_results}")
 
-    # if writer:
-    #     # Evaluate the character error rate
-    #     # Compute the char error rate 
-    #     metric = torchmetrics.CharErrorRate()
-    #     cer = metric(predicted, expected)
-    #     writer.add_scalar('validation cer', cer, global_step)
-    #     print_msg(f"Validation CER: {cer}")
-    #     writer.flush()
+    if writer:
+        # Evaluate the character error rate
+        # Compute the char error rate 
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted, expected)
+        writer.add_scalar('validation cer', cer, global_step)
+        print_msg(f"Validation CER: {cer}")
+        writer.flush()
 
-    #     # Compute the word error rate
-    #     metric = torchmetrics.WordErrorRate()
-    #     wer = metric(predicted, expected)
-    #     writer.add_scalar('validation wer', wer, global_step)
-    #     print_msg(f"Validation WER: {wer}")
-    #     writer.flush()
+        # Compute the word error rate
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted, expected)
+        writer.add_scalar('validation wer', wer, global_step)
+        print_msg(f"Validation WER: {wer}")
+        writer.flush()
 
-    #     # Convert expected into a list of lists
-    #     expected_list = [[translation] for translation in expected]
-    #     # Initialize BLEUScore object
-    #     metric1 = BLEUScore()
-    #     # Computing BLEU score
-    #     bleu = metric1(predicted, expected_list)
-    #     writer.add_scalar('validation BLEU', bleu, global_step)
-    #     print_msg(f"Validation BLEU: {bleu}")
-    #     writer.flush()
+        # Convert expected into a list of lists
+        expected_list = [[translation] for translation in expected]
+        # Initialize BLEUScore object
+        metric1 = BLEUScore()
+        # Computing BLEU score
+        bleu = metric1(predicted, expected_list)
+        writer.add_scalar('validation BLEU', bleu, global_step)
+        print_msg(f"Validation BLEU: {bleu}")
+        writer.flush()
 
         # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
@@ -386,7 +386,7 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
     predicted_whole = []
 
     # Hard-coded indices of examples to print
-    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) - 1]
+    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) // 10, len(validation_ds) // 30,len(validation_ds) // 50, len(validation_ds) - 1]
     counter = 0  # Manual counter to keep track of the current index
 
     try:
@@ -443,30 +443,30 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
     print_msg(f"WER: {wer_results}")
     print_msg(f"CER: {cer_results}")      
         
-    # if writer:
-    #     # Compute the Character Error Rate (CER)
-    #     cer_metric = torchmetrics.CharErrorRate()
-    #     cer = cer_metric(predicted_whole, expected)
-    #     writer.add_scalar('validation CER', cer, global_step)
-    #     print_msg(f"Validation CER: {cer}")
-    #     writer.flush()
+    if writer:
+        # Compute the Character Error Rate (CER)
+        cer_metric = torchmetrics.CharErrorRate()
+        cer = cer_metric(predicted_whole, expected)
+        writer.add_scalar('validation CER', cer, global_step)
+        print_msg(f"Validation CER: {cer}")
+        writer.flush()
 
-    #     # Compute the Word Error Rate (WER)
-    #     wer_metric = torchmetrics.WordErrorRate()
-    #     wer = wer_metric(predicted_whole, expected)
-    #     writer.add_scalar('validation WER', wer, global_step)
-    #     print_msg(f"Validation WER: {wer}")
-    #     writer.flush()
+        # Compute the Word Error Rate (WER)
+        wer_metric = torchmetrics.WordErrorRate()
+        wer = wer_metric(predicted_whole, expected)
+        writer.add_scalar('validation WER', wer, global_step)
+        print_msg(f"Validation WER: {wer}")
+        writer.flush()
 
-    #      # Convert expected into a list of lists
-    #     expected_list = [[translation] for translation in expected]
-    #     # Initialize BLEUScore object
-    #     metric1 = BLEUScore()
-    #     # Computing BLEU score
-    #     bleu = metric1(predicted_whole, expected_list)
-    #     writer.add_scalar('validation BLEU', bleu, global_step)
-    #     print_msg(f"Validation BLEU: {bleu}")
-    #     writer.flush()
+         # Convert expected into a list of lists
+        expected_list = [[translation] for translation in expected]
+        # Initialize BLEUScore object
+        metric1 = BLEUScore()
+        # Computing BLEU score
+        bleu = metric1(predicted_whole, expected_list)
+        writer.add_scalar('validation BLEU', bleu, global_step)
+        print_msg(f"Validation BLEU: {bleu}")
+        writer.flush()
 
         # # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]

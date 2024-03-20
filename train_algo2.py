@@ -43,56 +43,187 @@ import evaluate
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter
 
+from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import SmoothingFunction
+
+import nltk
+nltk.download('punkt')
+from nltk.tokenize import word_tokenize
+from nltk.translate.bleu_score import corpus_bleu
+
+import nltk
+nltk.download('punkt')
+from nltk.tokenize import word_tokenize
+from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.meteor_score import meteor_score
+nltk.download('wordnet')
+from rouge import Rouge 
+from jiwer import cer
+from jiwer import cer
+
 import collections
 import math
 
 import math
+import numpy as np
+
+import sacrebleu
+
+import collections
+import math
+import numpy as np
+from collections import Counter
+
+import nltk
+nltk.download('punkt')
+
+from collections import Counter
+from nltk.util import ngrams
+from nltk.tokenize import word_tokenize
+import numpy as np
+
+def aggregate_bleu_score(refs, sys, n=2):
+    
+    p_ns = np.zeros(n)
+    c = 0  
+    r = 0  
+
+    for predicted in sys:
+        predicted_tokens = word_tokenize(predicted)
+        reference_tokens = [word_tokenize(ref[0]) for ref in refs]
+
+        c += len(predicted_tokens)
+        r += min([len(target) for target in reference_tokens], key=lambda x: abs(x - len(predicted_tokens)))
+
+        for i in range(1, n + 1):
+            pred_ngrams = list(ngrams(predicted_tokens, i, pad_right=True, right_pad_symbol=None))
+            max_ref_ngrams = {}
+            for ref_tokens in reference_tokens:
+
+                ref_ngrams = list(ngrams(ref_tokens, i, pad_right=True, right_pad_symbol=None))
+                ref_ngram_counts = Counter(ref_ngrams)
+                for ngram in ref_ngram_counts:
+                    if ngram in max_ref_ngrams:
+                        max_ref_ngrams[ngram] = max(max_ref_ngrams[ngram], ref_ngram_counts[ngram])
+                    else:
+                        max_ref_ngrams[ngram] = ref_ngram_counts[ngram]
+
+            clipped_count = sum(min(count, max_ref_ngrams.get(ngram, 0)) for ngram, count in Counter(pred_ngrams).items())
+            total_count = len(pred_ngrams)
+            p_ns[i - 1] += clipped_count / total_count if total_count > 0 else 0
+
+    #print('p_ns',p_ns)
+    p_ns = p_ns / len(sys)  # Average precision per n-gram 
+    brevity_penalty = np.exp(1 - r / c) if c < r else 1
+
+    bleu_score = brevity_penalty * np.exp(sum(np.log(p) for p in p_ns) / n)
+    return bleu_score
+
+def dynamic_aggregate_bleu_score(refs, sys, max_n=4):
+    
+    p_ns = np.zeros(max_n)
+    c = 0  # Total length of system outputs
+    r = 0  # Total length of the closest reference lengths
+
+    for predicted in sys:
+        predicted_tokens = word_tokenize(predicted)
+        reference_tokens = [word_tokenize(ref[0]) for ref in refs]
+
+        c += len(predicted_tokens)
+        r += min([len(target) for target in reference_tokens], key=lambda x: abs(x - len(predicted_tokens)))
+
+        # Find the smallest sentence length among the current predicted sentence and all references
+        min_length = min([len(predicted_tokens)] + [len(ref) for ref in reference_tokens])
+
+        # Determine the highest n-gram order that makes sense given the sentence lengths
+        effective_n = min(max_n, min_length)
+
+        for i in range(1, effective_n + 1):
+            pred_ngrams = list(ngrams(predicted_tokens, i, pad_right=True, right_pad_symbol=None))
+            max_ref_ngrams = {}
+
+            for ref_tokens in reference_tokens:
+                ref_ngrams = list(ngrams(ref_tokens, i, pad_right=True, right_pad_symbol=None))
+                ref_ngram_counts = Counter(ref_ngrams)
+                for ngram in ref_ngram_counts:
+                    max_ref_ngrams[ngram] = max(max_ref_ngrams.get(ngram, 0), ref_ngram_counts[ngram])
+
+            clipped_count = sum(min(count, max_ref_ngrams.get(ngram, 0)) for ngram, count in Counter(pred_ngrams).items())
+            total_count = len(pred_ngrams)
+            p_ns[i - 1] += clipped_count / total_count if total_count > 0 else 0
+
+    # Adjust p_ns for the number of sentences processed
+    p_ns = p_ns / len(sys)  # Average precision per n-gram across all sentences considered
+    brevity_penalty = np.exp(1 - r / c) if c < r else 1
+
+    # Compute BLEU score using only the effective n-grams
+    bleu_score = brevity_penalty * np.exp(sum(np.log(p) for p in p_ns[:effective_n]) / effective_n)
+    return bleu_score
+
+# def calculate_corpus_bleu(references, predictions):
+#     # Tokenize the sentences into words
+#     references_tokenized = [[ref.split()] for ref in references]  # Each reference wrapped in another list
+#     predictions_tokenized = [pred.split() for pred in predictions]
+    
+#     # Calculate the corpus BLEU score
+#     score = corpus_bleu(references_tokenized, predictions_tokenized, smoothing_function=SmoothingFunction().method1)
+    
+#     return score
 
 def n_gram_counts(text, n):
-    # Generate n-grams from the given text and convert them to tuples
-    return [tuple(word.lower() for word in text[i:i+n]) for i in range(len(text)-n+1)]
+    tokens = text.split()
+    return [tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1)]
 
 def modified_precision(predicted, expected, n):
     predicted_ngrams = n_gram_counts(predicted, n)
-    expected_ngrams = n_gram_counts(expected, n)
-    expected_ngrams_count = {ngram: expected_ngrams.count(ngram) for ngram in set(expected_ngrams)}
+    # Assuming there's only one expected text per predicted text, we directly pass the first element of expected.
+    expected_ngrams = n_gram_counts(expected[0], n)  # Adjusted to pass a string
     
+    predicted_ngrams_count = Counter(predicted_ngrams)
+    expected_ngrams_count = Counter(expected_ngrams)
+
     match_count = 0
-    for ngram in predicted_ngrams:
-        if ngram in expected_ngrams_count and expected_ngrams_count[ngram] > 0:
-            match_count += 1
-            expected_ngrams_count[ngram] -= 1
-            
-    return match_count / len(predicted_ngrams) if predicted_ngrams else 0
+    for ngram in predicted_ngrams_count:
+        match_count += min(predicted_ngrams_count[ngram], expected_ngrams_count.get(ngram, 0))
+    
+    total_count = len(predicted_ngrams)
+
+    return match_count, total_count
 
 def brevity_penalty(predicted, expected):
-    predicted_length = len(predicted)
-    expected_length = len(expected)
-    if predicted_length > expected_length:
+    predicted_length = len(predicted.split())
+    expected_lengths = [len(e.split()) for e in expected]
+    closest_length = min(expected_lengths, key=lambda ref_len: (abs(ref_len - predicted_length), ref_len))
+    
+    if predicted_length > closest_length:
         return 1
     else:
-        return math.exp(1 - expected_length / predicted_length) if predicted_length else 0
+        return math.exp(1 - closest_length / predicted_length)
 
-def calculate_bleu(predicted_whole, expected, n_gram=4):
-    weights = [1.0 / n_gram] * n_gram  # Equal weights for all n-grams
-    bp = brevity_penalty(' '.join(predicted_whole), ' '.join(expected))
+def calculate_bleu(predicted_corpus, expected_corpus, max_n=4):
+    weights = [1.0 / max_n] * max_n  # Uniform weights for simplicity, can be adjusted
+    p_n = [0] * max_n
+    for i in range(max_n):
+        sum_match_counts = 0
+        sum_total_counts = 0
+        for predicted, expected in zip(predicted_corpus, expected_corpus):
+            match_count, total_count = modified_precision(predicted, [expected], i+1)
+            sum_match_counts += match_count
+            sum_total_counts += total_count
 
-    p_ns = []
-    for predicted, exp in zip(predicted_whole, expected):
-        p_n = [modified_precision(predicted.split(), exp.split(), i+1) for i in range(n_gram)]
-        p_ns.append(p_n)
-    
-    # Calculate geometric mean of the precisions for each sentence and then average them
-    bleu_scores = []
-    for p_n in p_ns:
-        s = [w_i * math.log(p_i) for w_i, p_i in zip(weights, p_n) if p_i]
-        if s:  # Check to avoid math domain error if s is empty
-            bleu_score = bp * math.exp(sum(s))
-            bleu_scores.append(bleu_score)
+        # Smoothing: add 1 to match counts for n-grams with at least one match
+        if sum_match_counts == 0:
+            sum_match_counts = 1
+            sum_total_counts += 1  # Avoid division by zero
+        
+        p_n[i] = sum_match_counts / sum_total_counts
 
-    # Return the average BLEU score across all the sentences
-    return sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
+    # Calculate brevity penalty and geometric mean of modified precisions
+    bp = sum(brevity_penalty(predicted, [expected]) for predicted, expected in zip(predicted_corpus, expected_corpus)) / len(predicted_corpus)
+    geo_mean = math.exp(sum(weights[i] * math.log(p_n[i]) for i in range(max_n)))
 
+    bleu_score = bp * geo_mean
+    return bleu_score
 
 def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
@@ -125,25 +256,30 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
 
     return decoder_input.squeeze(0)
 
-def calculate_bleu(predicted, expected):
-    # Convert the predicted and expected sequences into a list of lists of tokens
-    predicted_tokens = [prediction.split() for prediction in predicted]
-    expected_tokens = [[reference.split()] for reference in expected]
+def calculate_bleu_score(candidate_corpus, reference_corpus):
+    """
+    Calculate BLEU score given a candidate corpus and a reference corpus.
 
-    # Create a smoothing function
-    chencherry = SmoothingFunction()
+    Args:
+    candidate_corpus (list): List of strings, each string being a candidate translation.
+    reference_corpus (list): List of lists, where each sublist contains reference translations for a single sentence.
 
-    # Calculate BLEU score with smoothing
-    bleu_score = corpus_bleu(expected_tokens, predicted_tokens, smoothing_function=chencherry.method1)
+    Returns:
+    float: BLEU score.
+    """
+    candidate_corpus_tokenized = [nltk.tokenize.word_tokenize(sent.lower()) for sent in candidate_corpus]
+    reference_corpus_tokenized = [[nltk.tokenize.word_tokenize(sent.lower())] for sent in reference_corpus]
 
+    # Calculate BLEU score
+    smoothing_function = nltk.translate.bleu_score.SmoothingFunction().method4
+    bleu_score = nltk.translate.bleu_score.corpus_bleu(reference_corpus_tokenized, candidate_corpus_tokenized, smoothing_function=smoothing_function)
+    
     return bleu_score
 
 def calculate_nist(predicted, expected):
     # Convert the predicted and expected sequences into a list of lists of tokens
     predicted_tokens = [prediction.split() for prediction in predicted]
     expected_tokens = [[reference.split()] for reference in expected]
-
-    # Calculate NIST score
     try:
         nist_score = corpus_nist(expected_tokens, predicted_tokens)
     except ZeroDivisionError:
@@ -188,8 +324,8 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     expected = []
     predicted = []
 
-     # Indices of examples to print - first, middle, and last
-    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) - 1]
+    # Indices of examples to print - first, middle, and last
+    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) // 10, len(validation_ds) // 30,len(validation_ds) // 50, len(validation_ds) - 1]
     counter = 0  # Manual counter to keep track of the current index
 
     try:
@@ -231,52 +367,94 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
             counter += 1  # Increment the manual counter
 
-    rouge = evaluate.load("rouge")
-    meteor = evaluate.load("meteor")
-    bleu = evaluate.load("bleu")
-    wer = evaluate.load("wer")
-    cer = evaluate.load("cer")
+    if writer:
+        # Evaluate the character error rate
+        # Compute the char error rate 
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted, expected)
+        writer.add_scalar('validation cer_wrong', cer, global_step)
+        writer.flush()
 
-    rouge_results = rouge.compute(predictions=predicted, references=expected)
-    meteor_results = meteor.compute(predictions=predicted, references=expected)
-    bleu_results = bleu.compute(predictions=predicted, references=[[ref] for ref in expected])
-    wer_results = wer.compute(predictions=predicted, references=expected)
-    cer_results = cer.compute(predictions=predicted, references=expected)
+        # Compute the word error rate
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted, expected)
+        writer.add_scalar('validation wer_wrong', wer, global_step)
+        writer.flush()
 
-    # Print metrics
-    print_msg(f"Validation ROUGE Scores:\n{rouge_results}")
-    print_msg(f"Validation METEOR Score: {round(meteor_results['meteor'], 2)}")
-    print_msg(f"BLEU Score: {bleu_results}")
-    print_msg(f"WER: {wer_results}")
-    print_msg(f"CER: {cer_results}")        
+        # # Compute the BLEU metric
+        # metric = torchmetrics.BLEUScore()
+        # bleu = metric(predicted, expected)
+        # writer.add_scalar('validation BLEU', bleu, global_step)
+        # writer.flush()
 
-    # if writer:
-    #     # Evaluate the character error rate
-    #     # Compute the char error rate 
-    #     metric = torchmetrics.CharErrorRate()
-    #     cer = metric(predicted, expected)
-    #     writer.add_scalar('validation cer', cer, global_step)
-    #     print_msg(f"Validation CER: {cer}")
-    #     writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
 
-    #     # Compute the word error rate
-    #     metric = torchmetrics.WordErrorRate()
-    #     wer = metric(predicted, expected)
-    #     writer.add_scalar('validation wer', wer, global_step)
-    #     print_msg(f"Validation WER: {wer}")
-    #     writer.flush()
+        # For BLEU Score, wrap each target sentence in a list
+        expected_for_bleu = [[exp] for exp in expected]
 
-    #     # Convert expected into a list of lists
-    #     expected_list = [[translation] for translation in expected]
-    #     # Initialize BLEUScore object
-    #     metric1 = BLEUScore()
-    #     # Computing BLEU score
-    #     bleu = metric1(predicted, expected_list)
-    #     writer.add_scalar('validation BLEU', bleu, global_step)
-    #     print_msg(f"Validation BLEU: {bleu}")
-    #     writer.flush()
+        # blue_corprus=calculate_corpus_bleu(predicted, expected)
+        # writer.add_scalar('validation BLEU_corprus', blue_corprus, global_step)
+        # print_msg(f"Validation BLEU_corprus_wrong: {blue_corprus}")
+        # writer.flush()
 
-        # # For BLEU Score, wrap each target sentence in a list
+        # Calculate BLEU score
+        bleu = sacrebleu.corpus_bleu(predicted, expected_for_bleu)
+        print(f"BLEU score: {bleu.score:.2f}")
+        print(f"Full report:\n{bleu}")
+
+        aggregrate = aggregate_bleu_score(predicted,expected_for_bleu)
+        print(f"BLEU score_custom1: {aggregrate}")
+
+        dynamic = dynamic_aggregate_bleu_score(predicted,expected_for_bleu)
+        print(f"BLEU score_custom2: {dynamic}")
+    # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted]
+    # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+
+    # # Calculate BLEU score
+    # bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
+    # print(f"BLEU Score_1: {bleu_score}")
+
+    tokenized_predicted = [word_tokenize(sentence, language='portuguese') for sentence in predicted]
+    tokenized_expected = [word_tokenize(sentence, language='portuguese') for sentence in expected]
+
+    # Calculate METEOR for each pair and take the average
+    meteor_scores = [meteor_score([ref], pred) for ref, pred in zip(tokenized_expected, tokenized_predicted)]
+    average_meteor = sum(meteor_scores) / len(meteor_scores)
+
+    print(f"Average METEOR Score_correct: {average_meteor}")
+
+    rouge = Rouge()
+    scores = rouge.get_scores(predicted,expected, avg=True)
+    print("ROUGE scores_correct:", scores)
+
+    # cer_scores = [cer(reference, prediction) for reference, prediction in zip(expected, predicted)]
+    # average_cer = sum(cer_scores) / len(cer_scores)
+    # print(f"CER_correct: {average_cer}")
+
+    # wer_scores = [wer(reference, prediction) for reference, prediction in zip(expected, predicted)]
+    # average_wer = sum(wer_scores) / len(wer_scores)
+    # print(f"WER_correct: {average_wer}")
+    # # if predicted:
+    #     print_msg(f"Data type of elements in 'predicted': {type(predicted[0])}")
+    # else:
+    #     print_msg("The 'predicted' list is empty.")
+
+    # if expected:
+    #     print_msg(f"Data type of elements in 'expected': {type(expected[0])}")
+    # else:
+    #     print_msg("The 'expected' list is empty.")
+
+    # # Print the entire 'predicted' and 'expected' lists
+    # print_msg('Predicted Outputs:')
+    # print(predicted)
+
+    # print_msg('Expected Outputs:')
+    # print(expected)
+    
+        # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
 
         # expected_for_bleu_custom1 = [exp.split() for exp in expected]
@@ -292,14 +470,8 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # bleu_custom1 = calculate_bleu_score(predicted, expected_for_bleu_custom1)
         # writer.add_scalar('validation BLEU', bleu_custom1, global_step)
         # print_msg(f"Validation BLEU-custom1: {bleu_custom1}")
-        # writer.flush()
-
-        # bleu_custom2 = calculate_bleu(predicted, expected)
-        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        # print_msg(f"Validation BLEU: {bleu_custom2}")
-        # writer.flush()
-        
-
+        # writer.flush()   
+       
 # def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source, source_mask, tokenizer_tgt, max_len, device):
 #     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
 #     eos_idx = tokenizer_tgt.token_to_id('[EOS]')
@@ -317,20 +489,20 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 #         prob = model_causal_mask.project(out[:, -1])
 #         _, next_word = torch.max(prob, dim=1)
 
+#         # Add the new token to the sequence using your suggested concatenation method
+#         decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
+
 #         if next_word.item() == eos_idx:
 #             decoder_input = torch.cat([decoder_input, next_word.unsqueeze(0)], dim=1)
 #             break
 
-#         # Add the new token to the sequence using your suggested concatenation method
-#         decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
-
 #         # Step 2: Refine the previous token using the new token as future context with model_causal_mask_with_future
-#         if decoder_input.size(1) > 2:  # Ensure there's at least one token to refine
+#         if decoder_input.size(1) > 4:  # Ensure there's at least one token to refine
 #             # Use the last two tokens (previous token and the new token) for refinement
 #             refinement_segment = decoder_input
 #             refinement_mask = causal_mask_with_future(refinement_segment.size(1)).type_as(source_mask).to(device)
 #             refinement_out = model_causal_mask_with_future.decode(encoder_output, source_mask, refinement_segment, refinement_mask)
-#             refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -2])  # Get probabilities for the token before the last
+#             refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -3])  # Get probabilities for the token before the last
 #             _, refined_word = torch.max(refinement_prob, dim=1)
 
 #             # Update the second last token with the refined prediction
@@ -382,7 +554,7 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
     predicted_whole = []
 
     # Hard-coded indices of examples to print
-    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) - 1]
+    indices_to_print = [0, len(validation_ds) // 2, len(validation_ds) // 10, len(validation_ds) // 30,len(validation_ds) // 50, len(validation_ds) - 1]
     counter = 0  # Manual counter to keep track of the current index
 
     try:
@@ -394,6 +566,7 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
 
     with torch.no_grad():
         for batch in validation_ds:
+            
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
@@ -407,8 +580,8 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
             source_texts.append(source_text)
             expected.append(target_text)
             predicted_whole.append(model_out_whole_text)
-       
-             # Print details for specific indices using the counter
+
+            # Print details for specific indices using the counter
             if counter in indices_to_print:
                 print_msg('-' * console_width)
                 print_msg(f"Validation Example {counter + 1}")
@@ -419,49 +592,69 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
 
             counter += 1  # Increment the manual counter
 
-    rouge = evaluate.load("rouge")
-    meteor = evaluate.load("meteor")
-    bleu = evaluate.load("bleu")
-    wer = evaluate.load("wer")
-    cer = evaluate.load("cer")
+    if writer:
+        # Evaluate the character error rate
+        # Compute the char error rate 
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted_whole, expected)
+        writer.add_scalar('validation cer_wrong', cer, global_step)
+        writer.flush()
 
-    rouge_results = rouge.compute(predictions=predicted_whole, references=expected)
-    meteor_results = meteor.compute(predictions=predicted_whole, references=expected)
-    bleu_results = bleu.compute(predictions=predicted_whole, references=[[ref] for ref in expected])
-    wer_results = wer.compute(predictions=predicted_whole, references=expected)
-    cer_results = cer.compute(predictions=predicted_whole, references=expected)
+        # Compute the word error rate
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted_whole, expected)
+        writer.add_scalar('validation wer_wrong', wer, global_step)
+        writer.flush()
 
-    # Print metrics
-    print_msg(f"Validation ROUGE Scores:\n{rouge_results}")
-    print_msg(f"Validation METEOR Score: {round(meteor_results['meteor'], 2)}")
-    print_msg(f"BLEU Score: {bleu_results}")
-    print_msg(f"WER: {wer_results}")
-    print_msg(f"CER: {cer_results}")  
+        # # Compute the BLEU metric
+        # metric = torchmetrics.BLEUScore()
+        # bleu = metric(predicted, expected)
+        # writer.add_scalar('validation BLEU', bleu, global_step)
+        # writer.flush()
 
-    # if writer:
-    #     # Compute the Character Error Rate (CER)
-    #     cer_metric = torchmetrics.CharErrorRate()
-    #     cer = cer_metric(predicted_whole, expected)
-    #     writer.add_scalar('validation CER', cer, global_step)
-    #     print_msg(f"Validation CER: {cer}")
-    #     writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted_whole, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
 
-    #     # Compute the Word Error Rate (WER)
-    #     wer_metric = torchmetrics.WordErrorRate()
-    #     wer = wer_metric(predicted_whole, expected)
-    #     writer.add_scalar('validation WER', wer, global_step)
-    #     print_msg(f"Validation WER: {wer}")
-    #     writer.flush()
+        # For BLEU Score, wrap each target sentence in a list
+        expected_for_bleu = [[exp] for exp in expected]
 
-    #      # Convert expected into a list of lists
-    #     expected_list = [[translation] for translation in expected]
-    #     # Initialize BLEUScore object
-    #     metric1 = BLEUScore()
-    #     # Computing BLEU score
-    #     bleu = metric1(predicted_whole, expected_list)
-    #     writer.add_scalar('validation BLEU', bleu, global_step)
-    #     print_msg(f"Validation BLEU: {bleu}")
-    #     writer.flush()
+        # blue_corprus=calculate_corpus_bleu(predicted, expected)
+        # writer.add_scalar('validation BLEU_corprus', blue_corprus, global_step)
+        # print_msg(f"Validation BLEU_corprus_wrong: {blue_corprus}")
+        # writer.flush()
+
+        # Calculate BLEU score
+        bleu = sacrebleu.corpus_bleu(predicted_whole, expected_for_bleu)
+        print(f"BLEU score1: {bleu.score:.2f}")
+        print(f"Full report:\n{bleu}")
+
+        aggregrate = aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        print(f"BLEU score_custom1: {aggregrate}")
+
+        dynamic = dynamic_aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        print(f"BLEU score_custom2: {dynamic}")
+
+    # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted_whole]
+    # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+
+    # # Calculate BLEU score
+    # bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
+    # print(f"BLEU Score_1: {bleu_score}")
+
+    tokenized_predicted = [word_tokenize(sentence, language='portuguese') for sentence in predicted_whole]
+    tokenized_expected = [word_tokenize(sentence, language='portuguese') for sentence in expected]
+
+    # Calculate METEOR for each pair and take the average
+    meteor_scores = [meteor_score([ref], pred) for ref, pred in zip(tokenized_expected, tokenized_predicted)]
+    average_meteor = sum(meteor_scores) / len(meteor_scores)
+
+    print(f"Average METEOR Score_correct: {average_meteor}")
+
+    rouge = Rouge()
+    scores = rouge.get_scores(predicted_whole,expected, avg=True)
+    print("ROUGE scores_correct:", scores)
 
         # # For BLEU Score, wrap each target sentence in a list
         # expected_for_bleu = [[exp] for exp in expected]
@@ -480,11 +673,6 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         # print_msg(f"Validation BLEU-custom1: {bleu_custom1}")
         # writer.flush()
 
-        # bleu_custom2 = calculate_bleu(predicted_whole, expected)
-        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        # print_msg(f"Validation BLEU: {bleu_custom2}")
-        # writer.flush()
-        
 def get_all_sentences(ds, lang):
     for item in ds:
         yield item['translation'][lang]
@@ -541,7 +729,7 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
     model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config['seq_len'], d_model=config['d_model'])
     return model
 
-def train_model_causal_mask(config,current_epoch, model, device,num_epochs):
+def train_model_causal_mask(config,current_epoch, model, device, num_epochs):
     config['experiment_name'] = "runs/tmodel_causal_mask"  # Unique experiment name for this model
     # Define the device
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
@@ -638,11 +826,11 @@ def train_model_causal_mask(config,current_epoch, model, device,num_epochs):
 
     average_loss = total_loss / num_batches  # Compute average loss    
 
+
     if epoch == num_epochs - 1:
         # # Run validation at the end of every epoch using the whole training approach
         run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
         # validate_train_model_whole(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
-
         # Save the model at the end of every epoch, indicating it's been trained with both causal masks
     model_filename = get_weights_file_path(config, f"causal_mask_epoch_{epoch:02d}")
     torch.save({
@@ -654,7 +842,7 @@ def train_model_causal_mask(config,current_epoch, model, device,num_epochs):
 
     return model, average_loss 
 
-def train_model_causal_mask_with_future(config, current_epoch, model_causal_mask, model_causal_mask_with_future, device,num_epochs):
+def train_model_causal_mask_with_future(config, current_epoch, model_causal_mask, model_causal_mask_with_future, device, num_epochs):
     config['experiment_name'] = "runs/tmodel_causal_mask_with_future"  # Unique experiment name for this model
     # Define the device
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -735,7 +923,6 @@ def train_model_causal_mask_with_future(config, current_epoch, model_causal_mask
         global_step += 1
 
     average_loss = total_loss / num_batches  # Compute average loss    
-
     if epoch == num_epochs - 1:
         # Run validation after training for all epochs
         validate_train_model_whole(model_causal_mask, model_causal_mask_with_future, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
@@ -782,7 +969,6 @@ def alternate_training(config, num_epochs):
         print(f"Completed Epoch {epoch+1}/{num_epochs}")
 
     return losses_causal_mask, losses_causal_mask_with_future
-        
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")

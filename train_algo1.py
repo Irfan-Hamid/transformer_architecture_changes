@@ -74,6 +74,91 @@ import math
 import numpy as np
 from collections import Counter
 
+import nltk
+nltk.download('punkt')
+
+from collections import Counter
+from nltk.util import ngrams
+from nltk.tokenize import word_tokenize
+import numpy as np
+
+def aggregate_bleu_score(refs, sys, n=2):
+    
+    p_ns = np.zeros(n)
+    c = 0  
+    r = 0  
+
+    for predicted in sys:
+        predicted_tokens = word_tokenize(predicted)
+        reference_tokens = [word_tokenize(ref[0]) for ref in refs]
+
+        c += len(predicted_tokens)
+        r += min([len(target) for target in reference_tokens], key=lambda x: abs(x - len(predicted_tokens)))
+
+        for i in range(1, n + 1):
+            pred_ngrams = list(ngrams(predicted_tokens, i, pad_right=True, right_pad_symbol=None))
+            max_ref_ngrams = {}
+            for ref_tokens in reference_tokens:
+
+                ref_ngrams = list(ngrams(ref_tokens, i, pad_right=True, right_pad_symbol=None))
+                ref_ngram_counts = Counter(ref_ngrams)
+                for ngram in ref_ngram_counts:
+                    if ngram in max_ref_ngrams:
+                        max_ref_ngrams[ngram] = max(max_ref_ngrams[ngram], ref_ngram_counts[ngram])
+                    else:
+                        max_ref_ngrams[ngram] = ref_ngram_counts[ngram]
+
+            clipped_count = sum(min(count, max_ref_ngrams.get(ngram, 0)) for ngram, count in Counter(pred_ngrams).items())
+            total_count = len(pred_ngrams)
+            p_ns[i - 1] += clipped_count / total_count if total_count > 0 else 0
+
+    #print('p_ns',p_ns)
+    p_ns = p_ns / len(sys)  # Average precision per n-gram 
+    brevity_penalty = np.exp(1 - r / c) if c < r else 1
+
+    bleu_score = brevity_penalty * np.exp(sum(np.log(p) for p in p_ns) / n)
+    return bleu_score
+
+def dynamic_aggregate_bleu_score(refs, sys, max_n=4):
+    
+    p_ns = np.zeros(max_n)
+    c = 0  # Total length of system outputs
+    r = 0  # Total length of the closest reference lengths
+
+    for predicted in sys:
+        predicted_tokens = word_tokenize(predicted)
+        reference_tokens = [word_tokenize(ref[0]) for ref in refs]
+
+        c += len(predicted_tokens)
+        r += min([len(target) for target in reference_tokens], key=lambda x: abs(x - len(predicted_tokens)))
+
+        # Find the smallest sentence length among the current predicted sentence and all references
+        min_length = min([len(predicted_tokens)] + [len(ref) for ref in reference_tokens])
+
+        # Determine the highest n-gram order that makes sense given the sentence lengths
+        effective_n = min(max_n, min_length)
+
+        for i in range(1, effective_n + 1):
+            pred_ngrams = list(ngrams(predicted_tokens, i, pad_right=True, right_pad_symbol=None))
+            max_ref_ngrams = {}
+
+            for ref_tokens in reference_tokens:
+                ref_ngrams = list(ngrams(ref_tokens, i, pad_right=True, right_pad_symbol=None))
+                ref_ngram_counts = Counter(ref_ngrams)
+                for ngram in ref_ngram_counts:
+                    max_ref_ngrams[ngram] = max(max_ref_ngrams.get(ngram, 0), ref_ngram_counts[ngram])
+
+            clipped_count = sum(min(count, max_ref_ngrams.get(ngram, 0)) for ngram, count in Counter(pred_ngrams).items())
+            total_count = len(pred_ngrams)
+            p_ns[i - 1] += clipped_count / total_count if total_count > 0 else 0
+
+    # Adjust p_ns for the number of sentences processed
+    p_ns = p_ns / len(sys)  # Average precision per n-gram across all sentences considered
+    brevity_penalty = np.exp(1 - r / c) if c < r else 1
+
+    # Compute BLEU score using only the effective n-grams
+    bleu_score = brevity_penalty * np.exp(sum(np.log(p) for p in p_ns[:effective_n]) / effective_n)
+    return bleu_score
 
 # def calculate_corpus_bleu(references, predictions):
 #     # Tokenize the sentences into words
@@ -302,10 +387,10 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # writer.add_scalar('validation BLEU', bleu, global_step)
         # writer.flush()
 
-        bleu_custom2 = calculate_bleu(predicted, expected)
-        writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        print_msg(f"Validation BLEU: {bleu_custom2}")
-        writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
 
         # For BLEU Score, wrap each target sentence in a list
         expected_for_bleu = [[exp] for exp in expected]
@@ -317,15 +402,21 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
         # Calculate BLEU score
         bleu = sacrebleu.corpus_bleu(predicted, expected_for_bleu)
-        print(f"BLEU score1: {bleu.score:.2f}")
+        print(f"BLEU score: {bleu.score:.2f}")
         print(f"Full report:\n{bleu}")
 
-    predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted]
-    expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+        aggregrate = aggregate_bleu_score(predicted,expected_for_bleu)
+        print(f"BLEU score_custom1: {aggregrate}")
 
-    # Calculate BLEU score
-    bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
-    print(f"BLEU Score_1: {bleu_score}")
+        dynamic = dynamic_aggregate_bleu_score(predicted,expected_for_bleu)
+        print(f"BLEU score_custom2: {dynamic}")
+        
+    # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted]
+    # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+
+    # # Calculate BLEU score
+    # bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
+    # print(f"BLEU Score_1: {bleu_score}")
 
     tokenized_predicted = [word_tokenize(sentence, language='portuguese') for sentence in predicted]
     tokenized_expected = [word_tokenize(sentence, language='portuguese') for sentence in expected]
@@ -382,8 +473,6 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # print_msg(f"Validation BLEU-custom1: {bleu_custom1}")
         # writer.flush()
 
-        
-       
 def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source, source_mask, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
     eos_idx = tokenizer_tgt.token_to_id('[EOS]')
@@ -446,14 +535,14 @@ def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source
 #         decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
 
 #     # Refinement step using model_causal_mask_with_future for each token except the last one
-#     for i in range(1, decoder_input.size(1) - 1):
+#     for i in range(4, decoder_input.size(1) - 1):
 #         refinement_segment = decoder_input[:, :i+2]  # Select up to the next token for refinement
 #         refinement_mask = causal_mask_with_future(refinement_segment.size(1)).type_as(source_mask).to(device)
 #         refinement_out = model_causal_mask_with_future.decode(encoder_output, source_mask, refinement_segment, refinement_mask)
-#         refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -2])  # Get probabilities for the token before the last
+#         refinement_prob = model_causal_mask_with_future.project(refinement_out[:, -3])  # Get probabilities for the token before the last
 #         _, refined_word = torch.max(refinement_prob, dim=1)
 
-#         decoder_input[:, i] = refined_word  # Update the current token with the refined prediction
+#         decoder_input[:, i+1] = refined_word  # Update the current token with the refined prediction
 
 #     return decoder_input.squeeze(0)
 
@@ -524,10 +613,10 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         # writer.add_scalar('validation BLEU', bleu, global_step)
         # writer.flush()
 
-        bleu_custom2 = calculate_bleu(predicted_whole, expected)
-        writer.add_scalar('validation BLEU', bleu_custom2, global_step)
-        print_msg(f"Validation BLEU: {bleu_custom2}")
-        writer.flush()
+        # bleu_custom2 = calculate_bleu(predicted_whole, expected)
+        # writer.add_scalar('validation BLEU', bleu_custom2, global_step)
+        # print_msg(f"Validation BLEU: {bleu_custom2}")
+        # writer.flush()
 
         # For BLEU Score, wrap each target sentence in a list
         expected_for_bleu = [[exp] for exp in expected]
@@ -542,12 +631,18 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         print(f"BLEU score1: {bleu.score:.2f}")
         print(f"Full report:\n{bleu}")
 
-    predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted_whole]
-    expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+        aggregrate = aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        print(f"BLEU score_custom1: {aggregrate}")
 
-    # Calculate BLEU score
-    bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
-    print(f"BLEU Score_1: {bleu_score}")
+        dynamic = dynamic_aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        print(f"BLEU score_custom2: {dynamic}")
+
+    # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted_whole]
+    # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
+
+    # # Calculate BLEU score
+    # bleu_score = corpus_bleu(expected_tokens, predicted_tokens)
+    # print(f"BLEU Score_1: {bleu_score}")
 
     tokenized_predicted = [word_tokenize(sentence, language='portuguese') for sentence in predicted_whole]
     tokenized_expected = [word_tokenize(sentence, language='portuguese') for sentence in expected]

@@ -405,12 +405,12 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         print(f"BLEU score: {bleu.score:.2f}")
         print(f"Full report:\n{bleu}")
 
-        aggregrate = aggregate_bleu_score(predicted,expected_for_bleu)
-        print(f"BLEU score_custom1: {aggregrate}")
+        # aggregrate = aggregate_bleu_score(predicted,expected_for_bleu)
+        # print(f"BLEU score_custom1: {aggregrate}")
 
-        dynamic = dynamic_aggregate_bleu_score(predicted,expected_for_bleu)
-        print(f"BLEU score_custom2: {dynamic}")
-        
+        # dynamic = dynamic_aggregate_bleu_score(predicted,expected_for_bleu)
+        # print(f"BLEU score_custom2: {dynamic}")
+
     # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted]
     # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list
 
@@ -631,11 +631,11 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
         print(f"BLEU score1: {bleu.score:.2f}")
         print(f"Full report:\n{bleu}")
 
-        aggregrate = aggregate_bleu_score(predicted_whole,expected_for_bleu)
-        print(f"BLEU score_custom1: {aggregrate}")
+        # aggregrate = aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        # print(f"BLEU score_custom1: {aggregrate}")
 
-        dynamic = dynamic_aggregate_bleu_score(predicted_whole,expected_for_bleu)
-        print(f"BLEU score_custom2: {dynamic}")
+        # dynamic = dynamic_aggregate_bleu_score(predicted_whole,expected_for_bleu)
+        # print(f"BLEU score_custom2: {dynamic}")
 
     # predicted_tokens = [word_tokenize(sent, language='portuguese') for sent in predicted_whole]
     # expected_tokens = [[word_tokenize(sent, language='portuguese')] for sent in expected]  # Expected references wrapped in another list

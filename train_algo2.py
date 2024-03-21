@@ -22,6 +22,9 @@ from torchmetrics.functional import char_error_rate, word_error_rate
 
 from torchmetrics.text import BLEUScore
 
+import torch
+import numpy as np
+import random
 
 
 import warnings
@@ -36,7 +39,6 @@ from tokenizers.models import WordLevel
 from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
-import evaluate
 
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter

@@ -96,8 +96,8 @@ class MultiHeadAttentionBlock(nn.Module):
     
     @staticmethod
     def attention_decoder(query, key, value, mask, dropout: nn.Dropout):
-        alpha = 0.01
-        gamma = 0.02
+        alpha = -1e4
+        gamma = -1e5
         d_k = query.shape[-1]
         batch_size, num_heads, seq_len, _ = query.size()
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)

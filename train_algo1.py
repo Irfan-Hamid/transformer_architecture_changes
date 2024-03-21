@@ -22,9 +22,7 @@ from torchmetrics.functional import char_error_rate, word_error_rate
 
 from torchmetrics.text import BLEUScore
 
-nltk.download('wordnet')
-nltk.download('wordnet_ic')
-nltk.download('punkt')
+
 
 import warnings
 from tqdm import tqdm
@@ -47,13 +45,11 @@ from nltk.translate.bleu_score import corpus_bleu
 from nltk.translate.bleu_score import SmoothingFunction
 
 import nltk
-nltk.download('punkt')
+
 from nltk.tokenize import word_tokenize
 from nltk.translate.bleu_score import corpus_bleu
 from nltk.translate.bleu_score import corpus_bleu
 from nltk.translate.meteor_score import meteor_score
-nltk.download('wordnet')
-
 
 
 import math
@@ -61,11 +57,26 @@ import numpy as np
 import sacrebleu
 import collections
 import nltk
-nltk.download('punkt')
+
 from collections import Counter
 from nltk.util import ngrams
 
 
+def set_seed(seed_value):
+    """Set seed for reproducibility."""
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    torch.cuda.manual_seed_all(seed_value) 
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+seed_value = 12
+set_seed(seed_value)
+
+nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('wordnet_ic')
 
 def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')

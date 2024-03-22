@@ -1,5 +1,5 @@
 from model1 import build_transformer
-from dataset import BilingualDataset, causal_mask
+from datasetA import BilingualDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path
 from datasetA import causal_mask_with_future
 

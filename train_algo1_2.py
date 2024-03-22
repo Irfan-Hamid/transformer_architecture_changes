@@ -397,10 +397,9 @@ def train_model_causal_mask(config,current_epoch, model, device, num_epochs):
 
     average_loss = total_loss / num_batches  # Compute average loss    
 
-
-    if epoch == num_epochs - 1:
+    # if epoch == num_epochs - 1:
         
-        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
+    #     run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
     model_filename = get_weights_file_path(config, f"causal_mask_epoch_{epoch:02d}")
     torch.save({

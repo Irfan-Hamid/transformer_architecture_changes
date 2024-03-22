@@ -147,12 +147,10 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
             expected.append(target_text)
             predicted.append(model_out_text)
 
-    if writer:
-        # For BLEU Score, wrap each target sentence in a list
-        expected_for_bleu = [[exp] for exp in expected]
+    expected_for_bleu = [[exp] for exp in expected]
 
-        bleu = sacrebleu.corpus_bleu(predicted, expected_for_bleu)
-        print(f"BLEU score: {bleu.score:.2f}")
+    bleu = sacrebleu.corpus_bleu(predicted, expected_for_bleu)
+    print(f"BLEU score: {bleu.score:.2f}")
         
 def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source, source_mask, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')
@@ -222,14 +220,11 @@ def validate_train_model_whole(model_causal_mask, model_causal_mask_with_future,
             source_texts.append(source_text)
             expected.append(target_text)
             predicted_whole.append(model_out_whole_text)
-
-    if writer:
         
-        # For BLEU Score, wrap each target sentence in a list
-        expected_for_bleu = [[exp] for exp in expected]
+    expected_for_bleu = [[exp] for exp in expected]
 
-        bleu = sacrebleu.corpus_bleu(predicted_whole, expected_for_bleu)
-        print(f"BLEU score: {bleu.score:.2f}")
+    bleu = sacrebleu.corpus_bleu(predicted_whole, expected_for_bleu)
+    print(f"BLEU score: {bleu.score:.2f}")
 
 def get_all_sentences(ds, lang):
     for item in ds:

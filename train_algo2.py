@@ -73,7 +73,7 @@ def set_seed(seed_value):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-seed_value = 12
+seed_value = 42
 set_seed(seed_value)
 
 nltk.download('punkt')
@@ -165,7 +165,6 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
 
         bleu = sacrebleu.corpus_bleu(predicted, expected_for_bleu)
         print(f"BLEU score: {bleu.score:.2f}")
-        print(f"Full report:\n{bleu}")
         
 def greedy_decode_whole(model_causal_mask, model_causal_mask_with_future, source, source_mask, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id('[SOS]')

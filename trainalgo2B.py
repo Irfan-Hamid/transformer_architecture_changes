@@ -275,7 +275,7 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
 def train_model_causal_mask(config,current_epoch, model, device, num_epochs):
     config['experiment_name'] = "runs/tmodel_causal_mask"
     # Define the device
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using device:", device)
     if (device == 'cuda'):
         print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
